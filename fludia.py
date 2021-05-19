@@ -80,6 +80,8 @@ class BigQuery():
         print('Loaded {} rows into {}:{}.'.format(
             job.output_rows, self.dataset_name, self.table_name))
 
+
+
 if __name__ == '__main__':
     #instance of Fludia API Call
     fludia_call = API_Call_Fludia(tokens.fludia_url, tokens.username, tokens.password)
@@ -103,3 +105,4 @@ if __name__ == '__main__':
 
     #google credentials
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="/Users/zaynsagar/Energy_Proj/Energy_House/divine-fuze-223722-d9ac8cc5d808.json"
+    os.remove('fludia_data.csv')
