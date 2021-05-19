@@ -1,10 +1,7 @@
-import requests
+import requests, time, csv, os, simplejson
 from datetime import datetime
-import time
-import csv
 from google.cloud import bigquery
-import os
-import simplejson
+
 
 data_holder = []
 
