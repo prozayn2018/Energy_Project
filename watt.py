@@ -4,24 +4,25 @@ import time
 import csv
 from google.cloud import bigquery
 import os
+import simplejson
 
 data_holder = []
 
-client = language.LanguageServiceClient.from_service_account_json("/Users/zaynsagar/Energy_Proj/Energy_House/divine-fuze-223722-d9ac8cc5d808.json")
 #gets fludia data, will re-write to class and clean up later
-def fludia_call_api():
-    r = requests.get('https://app.wattspirit.com/api/smk/p1m/1611615600/1621234861',
+def fludia_call_api(source_file_name):
+    r = requests.get('https://app.wattspirit.com/api/smk/p1m/1611646056/1621232856',
     auth=('shelby.bons', 'wattspiritPS15'))
 
     data = r.json()
 
+
     for item in data:
-        time = datetime.fromtimestamp(item[0]/1000).strftime("%Y-%m-%d %I:%M:%S")
+        time = datetime.fromtimestamp(item[0]/1000).strftime("%m-%d-%Y %H:%M:%S")
         list_items = [time, item[1]]
         data_holder.append(list_items)
     #temporary csv file
-    with open('fludia_data' + '.csv', 'w') as csvfile:
-         fieldnames = ['time', 'watts']
+    with open(source_file_name, 'w') as csvfile:
+         fieldnames = ['date', 'watts']
           #create csv file
          csvwriter = csv.writer(csvfile)
           #write field
@@ -33,23 +34,24 @@ def fludia_call_api():
 #get data from https://www.eia.gov/opendata/
 #https://www.eia.gov/electricity/gridmonitor/dashboard/daily_generation_mix/regional/REG-MIDW
 
-def load_data_from_file(dataset_name, table_name):
+def load_data_from_file(dataset_name, table_name, source_file_name):
 
     #construct BigQuery Client
     bigquery_client = bigquery.Client()
     dataset = bigquery_client.dataset(dataset_name)
     table = dataset.table(table_name)
 
-    # Reload the table to get the schema.
-    table.reload()
-
-    #table_id = 'My_First_Project.energy_manager.fludia_raw_daily'
     #loading job_config
+    job_config = bigquery.LoadJobConfig()
+    job_config.source_format = bigquery.SourceFormat.CSV
+    job_config.autodetect = True
+
+    #reading csv file created earlier
     with open(source_file_name, 'rb') as source_file:
         # This example uses CSV, but you can use other formats.
         # See https://cloud.google.com/bigquery/loading-data
-        job = table.upload_from_file(
-            source_file, source_format='text/csv')
+        job = bigquery_client.load_table_from_file(
+            source_file, table, job_config=job_config)
 
     job.result()  # Wait for job to complete
 
@@ -58,9 +60,13 @@ def load_data_from_file(dataset_name, table_name):
 
 if __name__ == '__main__':
     #get fludia data
-    fludia_call_api()
+    fludia_call_api('fludia_data.csv')
+    print('itworked')
+    #wait for csv file to load
+    time.sleep(5)
     #push data into BigQuery
     load_data_from_file(
         'energy_manager',
         'fludia_raw_daily',
+        'fludia_data.csv'
         )
