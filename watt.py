@@ -2,7 +2,7 @@ import requests, time, csv, os, simplejson
 from datetime import datetime
 from google.cloud import bigquery
 
-
+#global_variable for data
 data_holder = []
 
 #gets fludia data, will re-write to class and clean up later
@@ -67,3 +67,33 @@ if __name__ == '__main__':
         'fludia_raw_daily',
         'fludia_data.csv'
         )
+
+
+
+
+
+
+
+
+            #instance of Fludia API Call
+            fludia_call = API_Call_Fludia(tokens.fludia_url, tokens.username, tokens.password)
+            fludia_call.fludia_call_api()
+
+            #instance of Csv
+            Csv_creator = Csv('fludia_data.csv')
+            Csv_creator.Csv_file_creator()
+
+            #wait for csv file to load
+            print('working on it....')
+            time.sleep(5)
+
+            #Instance of BigQuery
+            BigQuery_call = BigQuery(
+                    'energy_manager',
+                    'fludia_raw_daily',
+                    'fludia_data.csv'
+            )
+            BigQuery_call.BQ_data_push()
+
+            #google credentials
+            os.remove('fludia_data.csv')
