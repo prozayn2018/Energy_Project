@@ -12,20 +12,25 @@ fludia_api_retry = 0
 
 class API_Call_Fludia():
 
-    def __init__(self, url_path, username, password ):
+    def __init__(self, url_path, time_1, time_2,username, password ):
         #attributes for class
         self.url_path = url_path
         self.username = username
         self.password = password
+        self.time_url_1 = str(time_1)
+        self.time_url_2 = str(time_2)
 
     def fludia_call_api(self):
 
         import time, simplejson
         global fludia_api_retry
 
+        base_url_path = self.url_path + '/' + self.time_url_1 + '/' + self.time_url_2
+        print(base_url_path)
+
         #call api
         try:
-            data = requests.get(self.url_path, headers={'Content-Type': 'application/json'},
+            data = requests.get(base_url_path, headers={'Content-Type': 'application/json'},
             auth=(self.username, self.password))
             if data.status_code == 200:
                 print('HTTP Response code:', data.status_code)
@@ -34,7 +39,8 @@ class API_Call_Fludia():
                     print('calling Fludia API Again, error: {0} | times re-tried: {1}'.format(data.status_code, fludia_api_retry))
                     fludia_api_retry += 1
                     time.sleep(5)
-                    fludia_call = API_Call_Fludia(tokens.fludia_url, tokens.username, tokens.password)
+                    #will need to add arg here
+                    fludia_call = API_Call_Fludia(tokens.fludia_url, self.time_url_1, self.time_url_2,tokens.username, tokens.password)
                     fludia_call.fludia_call_api()
                 else:
                     pass
@@ -66,6 +72,7 @@ class Csv:
              csvwriter.writerow(fieldnames)
               #write row data
              csvwriter.writerows(data_holder)
+             print('SUCCESS: Fludia CSV File | Created')
 
 class BigQuery():
 
@@ -97,6 +104,7 @@ class BigQuery():
         else:
             for result in results:
                 row_data = str(result[0])
+
                 #will remove last occurrence of : from timestamp returned by BQ
                 char = [':', '.']
                 length = len(row_data)
@@ -104,11 +112,13 @@ class BigQuery():
                     if(row_data[i] == char[0]):
                         row_data_2 = row_data[0:i] + row_data[i+1:length]
                 row_data_3 = row_data_2.replace('+', '.')
+
                 #removing '.' from timestamp for epoch format
                 length_data_3 = len(row_data_3)
                 for i in range(length_data_3):
                     if(row_data_3[i] == char[1]):
                         last_row_in_bigquery = row_data_3[0:i]
+
                 #converting datetime object to epoch
                 date_time_obj = datetime.strptime(last_row_in_bigquery, '%Y-%m-%d %H:%M:%S')
                 #adding 60 seconds to datetime for next api call
@@ -116,11 +126,6 @@ class BigQuery():
                 timestamp_argument_1 = (api_call_time - datetime(1970, 1, 1)).total_seconds()
                 return timestamp_argument_1
 
-
-    #for the last returned row, adds one minute to time for api call retrieval
-    def BigQuery_time_adjustment(self):
-        time_original = self.check_BQ_for_data()
-        print('time original:', time_original)
 
 
     def BQ_data_push(self):
@@ -143,7 +148,7 @@ class BigQuery():
 
         #reading csv file created earlier
         with open(self.source_file_name, 'rb') as source_file:
-            # This example uses CSV, but you can use other formats.
+            # This example uses CSV, but can use other formats.
             # See https://cloud.google.com/bigquery/loading-data
             job = bigquery_client.load_table_from_file(
                 source_file, table, job_config=job_config)
@@ -153,6 +158,29 @@ class BigQuery():
         print('Loaded {} rows into {}:{}.'.format(
             job.output_rows, self.dataset_name, self.table_name))
 
+class Helper():
+
+    @staticmethod
+    def current_time():
+        time_now = datetime.now()
+        current_time = time_now.strftime('%Y-%m-%d %H:%M:%S')
+        date_time_obj = datetime.strptime(current_time, '%Y-%m-%d %H:%M:%S')
+        return date_time_obj
+
+    @staticmethod
+    def datetime_to_epoch():
+        time_now = Helper.current_time()
+        current_epoch_time = (time_now - datetime(1970, 1, 1)).total_seconds()
+        cur_epoch_time_no_zero = Helper.string_strip(str(current_epoch_time), '.')
+        return cur_epoch_time_no_zero
+
+    @staticmethod
+    #strips a string
+    def string_strip(a_string, char):
+        for i in range(len(a_string)):
+            if(a_string[i] == char):
+                new_string = a_string[0:i]
+                return new_string
 
 
 if __name__ == '__main__':
@@ -165,15 +193,30 @@ if __name__ == '__main__':
             'fludia_raw_daily',
             'fludia_data.csv'
     )
-    url_time_fludia = BigQuery_call.check_BQ_for_data()
+    #gets last record time + 1 min from table 'fludia_raw_daily'
+    time_1 = BigQuery_call.check_BQ_for_data()
 
     if timestamp_argument_1:
-        BigQuery_call.BigQuery_time_adjustment()
+        Helper_call = Helper()
+        #converting float epoch to str without additional zero at end
+        previous_epoch_time = Helper.string_strip(str(timestamp_argument_1), '.')
+        cur_epoch_time = Helper_call.datetime_to_epoch()
 
         #instance of Fludia API Call
-        #fludia_call = API_Call_Fludia(tokens.fludia_url, , tokens.username, tokens.password)
-        #fludia_call.fludia_call_api()
+        fludia_call = API_Call_Fludia(tokens.fludia_url, previous_epoch_time,cur_epoch_time ,tokens.username, tokens.password)
+        fludia_call.fludia_call_api()
 
         #instance of Csv
-        #Csv_creator = Csv('fludia_data.csv')
-        #Csv_creator.Csv_file_creator()
+        Csv_creator = Csv('fludia_data.csv')
+        Csv_creator.Csv_file_creator()
+
+        #Instance of BigQuery
+        BigQuery_call = BigQuery(
+                'energy_manager',
+                'fludia_raw_daily',
+                'fludia_data.csv'
+        )
+        BigQuery_call.BQ_data_push()
+
+        #google credentials
+        os.remove('fludia_data.csv')
