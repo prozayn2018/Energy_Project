@@ -49,11 +49,14 @@ class API_Call_Fludia():
             pass
 
         data_body = data.json()
+
         #append each row to data variable above
         for item in data_body:
-            time = datetime.fromtimestamp(item[0]/1000).strftime("%m-%d-%Y %H:%M:%S")
-            list_items = [time, item[1]]
+            conversion_time = item[0] / 1000.0
+            time = datetime.fromtimestamp(conversion_time).strftime('%m-%d-%Y %H:%M:%S.%f')
+            list_items = [time,item[0],float(item[1])]
             data_holder.append(list_items)
+        print('Rows in dataholder:', len(data_holder))
 
 class Csv:
 
@@ -65,7 +68,7 @@ class Csv:
     def Csv_file_creator(self):
 
         with open(self.csv_file_name, 'w') as csvfile:
-             fieldnames = ['date', 'watts']
+             fieldnames = ['date','epoch_time','watts']
               #create csv file
              csvwriter = csv.writer(csvfile)
               #write field
@@ -122,8 +125,10 @@ class BigQuery():
                 #converting datetime object to epoch
                 date_time_obj = datetime.strptime(last_row_in_bigquery, '%Y-%m-%d %H:%M:%S')
                 #adding 60 seconds to datetime for next api call
-                api_call_time = date_time_obj + timedelta(seconds=60)
+                #plus 360 mins because time is in UTC, we are behind 6 hours, so add 360 mins
+                api_call_time = date_time_obj + timedelta(minutes=360, seconds=60)
                 timestamp_argument_1 = (api_call_time - datetime(1970, 1, 1)).total_seconds()
+                print(timestamp_argument_1)
                 return timestamp_argument_1
 
 
@@ -146,6 +151,8 @@ class BigQuery():
         job_config.source_format = bigquery.SourceFormat.CSV
         job_config.autodetect = True
 
+        #if csv data has rows then run below
+
         #reading csv file created earlier
         with open(self.source_file_name, 'rb') as source_file:
             # This example uses CSV, but can use other formats.
@@ -161,18 +168,24 @@ class BigQuery():
 class Helper():
 
     @staticmethod
+    #this needs to be local
+    #returns time now but in GMT NOT Local
     def current_time():
         time_now = datetime.now()
         current_time = time_now.strftime('%Y-%m-%d %H:%M:%S')
-        date_time_obj = datetime.strptime(current_time, '%Y-%m-%d %H:%M:%S')
+        #current_time_1 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        date_time_obj = datetime.strptime(current_time, '%Y-%m-%d %H:%M:%S') + timedelta(minutes=360)
         return date_time_obj
 
     @staticmethod
+    #this needs to be local
     def datetime_to_epoch():
         time_now = Helper.current_time()
         current_epoch_time = (time_now - datetime(1970, 1, 1)).total_seconds()
-        cur_epoch_time_no_zero = Helper.string_strip(str(current_epoch_time), '.')
-        return cur_epoch_time_no_zero
+        #cur_epoch_time_no_zero = Helper.string_strip(str(current_epoch_time), '.')
+        print('api_call_2:',current_epoch_time)
+        return current_epoch_time
+        #return cur_epoch_time_no_zero
 
     @staticmethod
     #strips a string
@@ -180,6 +193,7 @@ class Helper():
         for i in range(len(a_string)):
             if(a_string[i] == char):
                 new_string = a_string[0:i]
+                print('api_call_1:', new_string)
                 return new_string
 
 
@@ -209,14 +223,12 @@ if __name__ == '__main__':
         #instance of Csv
         Csv_creator = Csv('fludia_data.csv')
         Csv_creator.Csv_file_creator()
+        #wait for csv file to load
+        time.sleep(5)
 
-        #Instance of BigQuery
-        BigQuery_call = BigQuery(
-                'energy_manager',
-                'fludia_raw_daily',
-                'fludia_data.csv'
-        )
-        BigQuery_call.BQ_data_push()
+        if len(data_holder) != 0:
+            #Instance of BigQuery
+            BigQuery_call.BQ_data_push()
 
-        #google credentials
-        os.remove('fludia_data.csv')
+            #google credentials
+            os.remove('fludia_data.csv')
