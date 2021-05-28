@@ -32,10 +32,10 @@ class API_Call_Fludia():
         try:
             data = requests.get(base_url_path, headers={'Content-Type': 'application/json'},
             auth=(self.username, self.password))
-            if data.status_code == 200:
+            if (data.status_code == 200):
                 print('HTTP Response code:', data.status_code)
-            elif data.status_code != 200:
-                if fludia_api_retry <= 5:
+            elif (data.status_code != 200):
+                if (fludia_api_retry <= 5):
                     print('calling Fludia API Again, error: {0} | times re-tried: {1}'.format(data.status_code, fludia_api_retry))
                     fludia_api_retry += 1
                     time.sleep(5)
