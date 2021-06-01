@@ -10,7 +10,7 @@ timestamp_argument_1 = None
 #api retry counter, 5 max:
 fludia_api_retry = 0
 
-class API_Call_Fludia():
+class API_Call_Fludia:
 
     def __init__(self, url_path, time_1, time_2,username, password ):
         #attributes for class
@@ -77,7 +77,7 @@ class Csv:
              csvwriter.writerows(data_holder)
              print('SUCCESS: Fludia CSV File | Created')
 
-class BigQuery():
+class BigQuery:
 
     #attributes for class
     def __init__(self, dataset_name, table_name, source_file_name):
@@ -165,7 +165,7 @@ class BigQuery():
         print('Loaded {} rows into {}:{}.'.format(
             job.output_rows, self.dataset_name, self.table_name))
 
-class Helper():
+class Helper:
 
     @staticmethod
     #this needs to be local

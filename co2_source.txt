@@ -1,0 +1,8 @@
+https://energyforhumanity.org/en/nuclear/fact-file-carbon-footprint/
+note: Carbon footprints are sensitive to factors including the technology’s operating conditions and country of its manufacture.
+
+on carbon seq: https://www.nrel.gov/docs/fy04osti/32575.pdf
+
+eia: https://www.eia.gov/tools/faqs/faq.php?id=74&t=11#:~:text=In%202019%2C%20total%20U.S.%20electricity,of%20CO2%20emissions%20per%20kWh.
+
+tomorrow: https://www.tmrow.com/
