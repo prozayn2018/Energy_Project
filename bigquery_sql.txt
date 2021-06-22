@@ -1,0 +1,98 @@
+with table_1 as (
+select date,MWh, energy_source
+from `divine-fuze-223722.energy_manager.eia_raw_hourly`
+
+ ), 
+
+ table_2 as (
+select date, 
+CONCAT(CAST(EXTRACT(YEAR FROM DATE (date)) AS STRING),"-",CAST(EXTRACT(MONTH FROM DATE (date)) AS STRING), "-",cast(EXTRACT(DAY FROM DATE (date)) AS STRING ), '-',cast(extract(hour from timestamp(date)) as STRING)) AS dateStrip,
+MAX(IF(energy_source = 'coal', MWh, NULL)) AS coal, MAX(IF(energy_source = 'solar', MWh, NULL)) AS solarMWh,
+MAX(IF(energy_source = 'hydro', MWh, NULL)) AS hydroMWh, MAX(IF(energy_source = 'natural_gas', MWh, NULL)) AS natural_gasMWh, 
+MAX(IF(energy_source = 'other', MWh, NULL)) AS otherMWh, MAX(IF(energy_source = 'petroleum', MWh, NULL)) AS petroleumMWh, 
+MAX(IF(energy_source = 'wind', MWh, NULL)) AS windMWh, MAX(IF(energy_source = 'nuclear', MWh, NULL)) AS nuclearMWh, 
+sum(MWh) as totalMWh, 
+from table_1
+group by date
+order by date DESC), 
+
+table_3 as (
+select date, epoch_time, watts, CONCAT(CAST(EXTRACT(YEAR FROM DATE (date)) AS STRING),"-",CAST(EXTRACT(MONTH FROM DATE (date)) AS STRING), "-",cast(EXTRACT(DAY FROM DATE (date)) AS STRING ), '-',cast(extract(hour from timestamp(date)) as STRING)) AS yyyy_mm__dd_hr,
+EXTRACT(YEAR FROM DATE (date)) AS Year, EXTRACT(MONTH FROM DATE (date)) AS MONTH, EXTRACT(DAY FROM DATE (date)) AS Day, 
+EXTRACT(HOUR FROM timestamp(date)) AS Hour
+from divine-fuze-223722.energy_manager.fludia_raw_daily
+),
+
+#merge with table_2 on date = dateStrip
+table_4 as (
+select yyyy_mm__dd_hr as date, round(sum(watts * 0.000017), 2) as KWh, round(sum(watts * 0.017 ),2) as wattHour,round(sum(watts),2) as totalWatts
+from table_3
+group by yyyy_mm__dd_hr
+order by date DESC
+),
+
+#sql function 
+
+##### gives KWh used for energy_source
+table_5 as (
+select table_2.date, KWh, EXTRACT(HOUR FROM timestamp(table_2.date)) AS Hour, format_date('%a', table_2.date) as weekday,EXTRACT(MONTH FROM DATE (table_2.date)) AS MONTH,wattHour, totalWatts as totalWattsHour, 
+round(KWh * (solarMWh/totalMWH),2) as SolarKWh,round(KWh * (coal/totalMWH),2) as coalKWh, 
+round(KWh * (windMWh/totalMWH),2) as windKWh, round(KWh * (natural_gasMWh/totalMWH),2) as natural_gasKWh,
+round(KWh * (otherMWh/totalMWH),2) as otherKWh, round(KWh * (petroleumMWh/totalMWH),2) as petroleumKWh,
+round(KWh * (hydroMWh/totalMWH),2) as hydroKWh, round(KWh * (nuclearMWh/totalMWH),2) as nuclearKWh,
+
+#pricing 
+
+
+
+#carbon emissions 
+round((KWh * (coal/totalMWH) * ((800 + 1002) /2)),2) as coal_gCO2eq_KWh,
+round((KWh * (petroleumMWh/totalMWH) * ((894 + 966) /2)),2) as petroleum_gCO2eq_KWh,
+round((KWh * (natural_gasMWh/totalMWH) * ((430 + 517) /2)),2) as natGas_gCO2eq_KWh,
+round((KWh * (hydroMWh/totalMWH) * ((2 + 13) /2)),2) as hydro_gCO2eq_KWh,
+round((KWh * (nuclearMWh/totalMWH) * ((6 + 26) /2)),2) as nuclear_gCO2eq_KWh,
+round((KWh * (windMWh/totalMWH) * ((3 + 38) /2)),2) as wind_gCO2eq_KWh,
+round((KWh * (solarMWh/totalMWH) * ((45 + 116) /2)),2) as solar_gCO2eq_KWh,
+round((KWh * (otherMWh/totalMWH) * ((300 + 500) /2)),2) as other_gCO2eq_KWh,
+
+#percent of energy_source from here
+round(coal/totalMWH, 2) as coal_per, round(solarMWh/totalMWH, 2) as solar_per, round(windMWh/totalMWH, 2) as wind_per, 
+round(natural_gasMWh/totalMWH, 2) as naturalGas_per, round(otherMWh/totalMWH, 2) as other_per,
+round(petroleumMWh/totalMWH, 2) as petroleum_per,round(hydroMWh/totalMWH, 2) as hydro_per, 
+round(nuclearMWh/totalMWH, 2) as nuclear_per
+
+from table_2 
+inner join table_4 
+on table_2.dateStrip = table_4.date
+order by date DESC), 
+
+table_6 as (
+select date, KWh,  
+weekday,
+case 
+#time of use pricing 
+
+#shoulder hours winter
+when ((hour between 9 and 13) or (hour between 18 and 21)) and (month IN (1,2,3,4,5,10,11,12) ) then .10
+#shoulder hours summer
+when ((hour between 9 and 13) or (hour between 18 and 21)) and (month IN (6,7,8,9))  then .13
+#weekday peak hours summer
+when (month IN (6,7,8,9)) and (hour between 14 and 18) then .18 
+#weekday peak hours winter
+when (month IN (1,2,3,4,5,10,11,12)) and (hour between 14 and 18) then .14 
+#off peak hours winter & summer 
+ELSE .08
+END AS PriceKWh, 
+wattHour, totalWattsHour, 
+round((other_gCO2eq_KWh + wind_gCO2eq_KWh + hydro_gCO2eq_KWh + solar_gCO2eq_KWh + petroleum_gCO2eq_KWh
++ natGas_gCO2eq_KWh + nuclear_gCO2eq_KWh + coal_gCO2eq_KWh), 2) as gramsCO2EmissionsHrTotal,
+round((other_gCO2eq_KWh + wind_gCO2eq_KWh + hydro_gCO2eq_KWh + solar_gCO2eq_KWh + petroleum_gCO2eq_KWh
++ natGas_gCO2eq_KWh + nuclear_gCO2eq_KWh + coal_gCO2eq_KWh) * 0.00220462262185, 2) as poundsCO2EmissionsHourTotal,
+solarKWh, coalKWh, windKWh, natural_gasKWh, otherKWh, petroleumKWh, nuclearKWh, coal_gCO2eq_KWh,
+petroleum_gCO2eq_KWh, natGas_gCO2eq_KWh, hydro_gCO2eq_KWh, nuclear_gCO2eq_KWh, wind_gCO2eq_KWh, solar_gCO2eq_KWh,
+other_gCO2eq_KWh, 
+coal_per, hydro_per, wind_per, solar_per, nuclear_per, petroleum_per, other_per, naturalGas_per
+from table_5)
+
+select *, round((KWh * PriceKWh), 2) as TotalBill
+from table_6
